@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MINDFORGE — A Puzzle Laboratory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600;9..144,700;9..144,900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root{
+    --void: #0b0e14;
+    --panel: #131826;
+    --panel-raised: #1a2133;
+    --line: #2a3349;
+    --ink: #e8ecf4;
+    --ink-dim: #8b94ab;
+    --signal: #5ee6c8;
+    --signal-dim: #2d6b5e;
+    --warn: #ff8a5c;
+    --violet: #a78bfa;
+    --gold: #f2c879;
+  }
+
+  *{ box-sizing: border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; }
+  body{
+    background: var(--void); color: var(--ink); font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh; overflow-x:hidden;
+    background-image:
+      radial-gradient(circle at 15% 8%, rgba(94,230,200,0.06), transparent 40%),
+      radial-gradient(circle at 85% 92%, rgba(167,139,250,0.07), transparent 45%);
+  }
+  .display{ font-family: 'Fraunces', serif; }
+  ::selection{ background: var(--signal); color: var(--void); }
+
+  #app{ max-width: 760px; margin: 0 auto; padding: 22px 16px 80px; }
+
+  header.top{
+    display:flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 18px;
+    flex-wrap: wrap; gap: 14px; position: sticky; top:0; background: var(--void); z-index: 50; padding-top: 6px;
+  }
+  header.top .brand{ display:flex; flex-direction: column; gap: 2px; }
+  header.top .brand .mark{ font-family:'Fraunces', serif; font-weight:700; font-size: 24px; letter-spacing: -0.02em; }
+  header.top .brand .mark span{ color: var(--signal); }
+  header.top .brand .sub{ color: var(--ink-dim); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; }
+
+  .stat-row{ display:flex; gap: 16px; align-items:center; }
+  .stat{ text-align:right; }
+  .stat .num{ font-family:'Fraunces', serif; font-size: 19px; font-weight: 700; line-height:1; }
+  .stat .lbl{ color: var(--ink-dim); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px;}
+  .stat.streak .num{ color: var(--gold); }
+  .stat.score .num{ color: var(--signal); }
+
+  .screen{ display:none; }
+  .screen.active{ display:block; animation: rise .3s ease; }
+  @keyframes rise{ from{ opacity:0; transform: translateY(8px);} to{opacity:1; transform:translateY(0);} }
+
+  /* ---------- TIER TABS ---------- */
+  .tier-tabs{ display:flex; gap:6px; margin-bottom: 22px; overflow-x:auto; padding-bottom:4px; }
+  .tier-tab{
+    flex:1; min-width: 130px; text-align:center; padding: 12px 10px; cursor:pointer;
+    background: var(--panel); border: 1px solid var(--line); position:relative;
+    transition: all .15s ease;
+  }
+  .tier-tab .t-name{ font-family:'Fraunces', serif; font-weight:700; font-size: 14px; }
+  .tier-tab .t-prog{ font-size: 9px; color: var(--ink-dim); text-transform:uppercase; letter-spacing:.08em; margin-top:3px;}
+  .tier-tab.active{ border-color: var(--signal); background: var(--panel-raised); }
+  .tier-tab.active .t-name{ color: var(--signal); }
+  .tier-tab.locked{ opacity: .35; cursor:not-allowed; }
+  .tier-tab .t-icon{ font-size: 18px; margin-bottom: 4px; display:block; }
+
+  .progress-strip{ height: 4px; background: var(--panel-raised); margin-bottom: 26px; position:relative; overflow:hidden; }
+  .progress-strip .fill{ position:absolute; left:0; top:0; bottom:0; background: linear-gradient(90deg, var(--signal), var(--violet)); transition: width .4s ease; }
+
+  /* ---------- WINDING LEVEL PATH (native game style) ---------- */
+  .path-wrap{ position:relative; padding: 10px 0 30px; }
+  .path-row{ display:flex; align-items:center; position:relative; margin-bottom: 6px; min-height: 92px; }
+  .path-row.left{ justify-content: flex-start; }
+  .path-row.center{ justify-content: center; }
+  .path-row.right{ justify-content: flex-end; }
+
+  .level-node{
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--panel); border: 2px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:'Fraunces', serif; font-weight:700; font-size: 20px; color: var(--ink-dim);
+    cursor:pointer; position:relative; z-index: 2; transition: transform .15s ease, border-color .15s ease;
+    flex-shrink:0;
+  }
+  .level-node:hover{ transform: scale(1.08); }
+  .level-node.current{ border-color: var(--signal); color: var(--ink); box-shadow: 0 0 0 5px rgba(94,230,200,0.12); animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ box-shadow: 0 0 0 5px rgba(94,230,200,0.12);} 50%{ box-shadow: 0 0 0 9px rgba(94,230,200,0.05);} }
+  .level-node.done{ background: var(--signal-dim); border-color: var(--signal); color: var(--ink); }
+  .level-node.locked{ opacity: .32; cursor:not-allowed; }
+  .level-node.locked:hover{ transform:none; }
+  .level-node .lock-ic{ font-size: 18px; }
+  .level-node .stars{ position:absolute; bottom:-13px; display:flex; gap:1px; }
+  .level-node .stars span{ font-size: 10px; color: var(--line); }
+  .level-node .stars span.lit{ color: var(--gold); }
+  .level-node .lv-num{ font-size: 9px; color: var(--ink-dim); position:absolute; top: -14px; letter-spacing:.06em; }
+  .level-node.current .lv-num, .level-node.done .lv-num{ color: var(--ink-dim); }
+  .badge-boss{ position:absolute; top:-8px; right:-6px; font-size: 13px; }
+
+  /* ---------- Puzzle screen ---------- */
+  .puzzle-head{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 18px; gap: 16px; flex-wrap:wrap;}
+  .puzzle-tag{ font-size:10px; text-transform:uppercase; letter-spacing:0.12em; color: var(--violet); margin-bottom: 6px;}
+  .puzzle-title{ font-family:'Fraunces', serif; font-size: 22px; font-weight:700; max-width: 46ch;}
+
+  .timer-box{ text-align:right; flex-shrink:0; }
+  .timer-ring{ position:relative; width:58px; height:58px; }
+  .timer-ring svg{ transform: rotate(-90deg); }
+  .timer-ring circle{ fill:none; stroke-width: 5; }
+  .timer-ring .bg{ stroke: var(--panel-raised); }
+  .timer-ring .fg{ stroke: var(--signal); stroke-linecap: round; transition: stroke-dashoffset 1s linear, stroke .3s ease; }
+  .timer-ring .fg.low{ stroke: var(--warn); }
+  .timer-ring .clock-txt{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Fraunces',serif; font-weight:700; font-size:13px; }
+
+  .puzzle-body{ background: var(--panel); border: 1px solid var(--line); padding: 24px; margin-bottom: 18px; }
+  .puzzle-prompt{ font-size: 14.5px; line-height: 1.75; margin-bottom: 20px; }
+  .puzzle-prompt b{ color: var(--signal); font-weight: 600;}
+
+  .visual-block{
+    font-family:'Fraunces', serif; font-size: 26px; text-align:center; letter-spacing: 0.06em;
+    padding: 18px 0; margin-bottom: 18px; color: var(--gold); background: var(--panel-raised); border: 1px dashed var(--line);
+  }
+  .grid-block{ display:grid; gap: 8px; justify-content:center; margin-bottom: 18px; }
+  .grid-cell{ width: 52px; height:52px; display:flex; align-items:center; justify-content:center; background: var(--panel-raised); border:1px solid var(--line); font-family:'Fraunces', serif; font-size: 20px; font-weight:600; }
+
+  .choice-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 10px; }
+  .choice-btn{
+    background: var(--panel-raised); border: 1px solid var(--line); color: var(--ink);
+    padding: 14px 16px; font-family:'JetBrains Mono', monospace; font-size: 13.5px;
+    cursor:pointer; text-align:left; transition: all .12s ease; display:flex; align-items:center; gap:10px;
+  }
+  .choice-btn .opt-letter{ width:22px; height:22px; flex-shrink:0; border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--ink-dim); }
+  .choice-btn:hover{ border-color: var(--signal); }
+  .choice-btn:hover .opt-letter{ border-color: var(--signal); color:var(--signal); }
+  .choice-btn.correct{ border-color: var(--signal); background: var(--signal-dim); }
+  .choice-btn.wrong{ border-color: var(--warn); background: #3a1f1a; }
+  .choice-btn:disabled{ cursor:default; }
+
+  .text-input-row{ display:flex; gap: 10px; flex-wrap:wrap; }
+  .text-input-row input{ flex:1; min-width: 200px; background: var(--panel-raised); border:1px solid var(--line); color: var(--ink); padding: 13px 14px; font-family:'JetBrains Mono'; font-size:14px; }
+  .text-input-row input:focus{ outline:none; border-color: var(--signal); }
+
+  .order-row{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 16px; min-height: 50px; border-bottom: 1px dashed var(--line); padding-bottom: 16px;}
+  .order-pool{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{ background: var(--panel-raised); border:1px solid var(--line); padding: 10px 14px; font-family:'Fraunces', serif; font-weight:600; cursor:pointer; user-select:none; }
+  .chip.placed{ border-color: var(--signal); color: var(--signal); }
+
+  .controls-row{ display:flex; justify-content: space-between; align-items:center; gap: 12px; flex-wrap:wrap;}
+  .btn{ font-family:'JetBrains Mono'; font-size: 11.5px; text-transform:uppercase; letter-spacing:0.08em; padding: 12px 18px; border: 1px solid var(--line); background: transparent; color: var(--ink-dim); cursor:pointer; transition: all .15s ease; }
+  .btn:hover{ border-color: var(--ink); color: var(--ink); }
+  .btn.primary{ background: var(--signal); border-color: var(--signal); color: #08130f; font-weight: 700;}
+  .btn.primary:hover{ background: #7af0d6; }
+  .btn:disabled{ opacity:.35; cursor:not-allowed; }
+  .btn-group{ display:flex; gap: 10px; flex-wrap:wrap; }
+
+  .hint-box{ margin-top: 14px; padding: 12px 14px; background: var(--panel-raised); border-left: 2px solid var(--gold); font-size: 13px; color: var(--ink-dim); display:none; }
+  .hint-box.show{ display:block; }
+
+  .feedback-banner{ margin-top: 16px; padding: 14px 16px; font-size: 13px; display:none; border:1px solid; }
+  .feedback-banner.show{ display:block; }
+  .feedback-banner.win{ border-color: var(--signal); background: var(--signal-dim); color: var(--ink);}
+  .feedback-banner.lose{ border-color: var(--warn); background: #2a1612; color: var(--ink);}
+  .star-earn{ display:flex; gap:6px; margin-top:10px; }
+  .star-earn span{ font-size: 18px; color: var(--line); }
+  .star-earn span.lit{ color: var(--gold); }
+
+  .result-wrap{ text-align:center; padding: 50px 0; }
+  .result-wrap .big{ font-family:'Fraunces', serif; font-size: 42px; font-weight: 800; margin-bottom: 10px;}
+  .result-wrap .sub{ color: var(--ink-dim); margin-bottom: 28px; font-size: 14px;}
+  .result-stats{ display:flex; justify-content:center; gap: 34px; margin-bottom: 32px; flex-wrap:wrap;}
+  .result-stats .stat .num{ font-size: 26px; }
+
+  footer.note{ text-align:center; color: var(--ink-dim); font-size: 11px; margin-top: 40px; letter-spacing: 0.04em;}
+
+  @media (max-width: 560px){
+    .puzzle-body{ padding: 16px; }
+    .puzzle-title{ font-size: 18px; }
+    .visual-block{ font-size: 19px; }
+    .level-node{ width:56px; height:56px; font-size:17px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="top">
+    <div class="brand">
+      <div class="mark">MIND<span>FORGE</span></div>
+      <div class="sub">a puzzle laboratory</div>
+    </div>
+    <div class="stat-row">
+      <div class="stat score"><div class="num" id="statScore">0</div><div class="lbl">Score</div></div>
+      <div class="stat streak"><div class="num" id="statStreak">0</div><div class="lbl">Streak</div></div>
+      <div class="stat"><div class="num" id="statSolved">0/80</div><div class="lbl">Solved</div></div>
+    </div>
+  </header>
+
+  <!-- HOME SCREEN -->
+  <div class="screen active" id="screen-home">
+    <div class="tier-tabs" id="tierTabs"></div>
+    <div class="progress-strip"><div class="fill" id="progFill" style="width:0%"></div></div>
+    <div class="path-wrap" id="pathWrap"></div>
+  </div>
+
+  <!-- PUZZLE SCREEN -->
+  <div class="screen" id="screen-puzzle">
+    <div class="puzzle-head">
+      <div>
+        <div class="puzzle-tag" id="pzTag">PATTERN · LEVEL 1</div>
+        <div class="puzzle-title" id="pzTitle">Title</div>
+      </div>
+      <div class="timer-box">
+        <div class="timer-ring">
+          <svg width="58" height="58">
+            <circle class="bg" cx="29" cy="29" r="24"></circle>
+            <circle class="fg" id="timerFg" cx="29" cy="29" r="24"></circle>
+          </svg>
+          <div class="clock-txt" id="pzClock">60</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="puzzle-body">
+      <div class="puzzle-prompt" id="pzPrompt"></div>
+      <div id="pzVisualSlot"></div>
+      <div id="pzInteractionSlot"></div>
+      <div class="hint-box" id="pzHint"></div>
+      <div class="feedback-banner" id="pzFeedback">
+        <div id="pzFeedbackText"></div>
+        <div class="star-earn" id="starEarn"></div>
+      </div>
+    </div>
+
+    <div class="controls-row">
+      <button class="btn" id="btnBack">← Back to map</button>
+      <div class="btn-group">
+        <button class="btn" id="btnHint">Show hint (−15 pts)</button>
+        <button class="btn primary" id="btnNext" style="display:none;">Next level →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS SCREEN -->
+  <div class="screen" id="screen-result">
+    <div class="result-wrap">
+      <div class="big">All tiers cleared</div>
+      <div class="sub">You've forged your way through all 80 levels.</div>
+      <div class="result-stats">
+        <div class="stat score"><div class="num" id="resScore">0</div><div class="lbl">Final score</div></div>
+        <div class="stat streak"><div class="num" id="resBestStreak">0</div><div class="lbl">Best streak</div></div>
+      </div>
+      <button class="btn primary" id="btnRestart">Reset the lab</button>
+    </div>
+  </div>
+
+  <footer class="note">MINDFORGE — solve thoughtfully. 80 levels across 4 disciplines.</footer>
+</div>
+
+<script>
+(function(){
+
+  function mc(title, prompt, options, answer, hint, visual, gridDemo){
+    return { title, prompt, options, answer, hint, visual, gridDemo, type:'choice' };
+  }
+  function tx(title, prompt, answers, hint, visual){
+    return { title, prompt, answer:answers, hint, visual, type:'text' };
+  }
+  function ord(title, prompt, items, correctOrder, hint){
+    return { title, prompt, items, correctOrder, hint, type:'order' };
+  }
+
+  const PATTERN = [
+    mc('Even Steps','What number continues this sequence?',['10','12','14','11'],'12','Each step adds 2.','2 · 4 · 6 · 8 · 10 · ?'),
+    mc('Triples','What number continues this sequence?',['18','21','17','20'],'18','Each step adds 3.','3 · 6 · 9 · 12 · 15 · ?'),
+    mc('Fives','What number continues this sequence?',['30','35','28','32'],'30','Each step adds 5.','5 · 10 · 15 · 20 · 25 · ?'),
+    mc('The Climbing Set','What number continues this sequence?',['48','64','40','56'],'64','Each term is double the one before it.','2 · 4 · 8 · 16 · 32 · ?'),
+    mc('Tripling Up','What number continues this sequence?',['200','243','220','250'],'243','Each term is multiplied by 3.','1 · 3 · 9 · 27 · 81 · ?'),
+    mc('Fibonacci Trail','What number continues this sequence?',['11','13','12','14'],'13','Each number is the sum of the two before it.','1 · 1 · 2 · 3 · 5 · 8 · ?'),
+    mc('Perfect Squares','What number continues this sequence?',['30','36','35','49'],'36','These are perfect squares: 1²,2²,3²,4²,5²...','1 · 4 · 9 · 16 · 25 · ?'),
+    mc('Prime Time','What number continues this sequence?',['12','13','14','15'],'13','These are prime numbers in order.','2 · 3 · 5 · 7 · 11 · ?'),
+    mc('Sliding Down','What number continues this sequence?',['65','60','55','50'],'60','Each step subtracts 10.','100 · 90 · 80 · 70 · ?'),
+    mc('Growing Gaps','What number continues this sequence?',['16','17','15','18'],'16','The gap grows by 1 each time: +1,+2,+3,+4,+5.','1 · 2 · 4 · 7 · 11 · ?'),
+    mc('Letter Skip','What letter continues the sequence?',['I','H','J','K'],'I','Skip one letter each time: A,C,E,G,I.','A · C · E · G · ?'),
+    mc('Letter Skip Two','What letter continues the sequence?',['J','I','K','L'],'J','Skip one letter each time: B,D,F,H,J.','B · D · F · H · ?'),
+    mc('Reverse Run','What letter continues the sequence?',['V','U','W','T'],'V','The alphabet counts backward one step at a time.','Z · Y · X · W · ?'),
+    mc('Cube Steps','What number continues this sequence?',['100','125','110','130'],'125','These are perfect cubes: 1³,2³,3³,4³,5³.','1 · 8 · 27 · 64 · ?'),
+    mc('Doubling Tens','What number continues this sequence?',['120','160','150','140'],'160','Each term doubles the one before it.','10 · 20 · 40 · 80 · ?'),
+    mc('Quad Growth','What number continues this sequence?',['300','324','310','340'],'324','Each term is multiplied by 3.','4 · 12 · 36 · 108 · ?'),
+    mc('Factorial Climb','What number continues this sequence?',['600','720','700','750'],'720','Each term multiplies by the next counting number: ×2,×3,×4,×5,×6.','1 · 2 · 6 · 24 · 120 · ?'),
+    mc('Steady Drop','What number continues this sequence?',['39','38','37','40'],'38','Each step subtracts 3.','50 · 47 · 44 · 41 · ?'),
+    mc('Triangular Numbers','What number continues this sequence?',['40','42','38','44'],'42','Each gap grows by 2: +4,+6,+8,+10,+12.','2 · 6 · 12 · 20 · 30 · ?'),
+    mc('Month Markers','What letter continues this sequence of first letters of the months?',['J','A','M','S'],'J','Jan, Feb, Mar, Apr, May, then Jun.','J · F · M · A · M · ?'),
+  ];
+
+  const LOGIC = [
+    mc('Three Boxes','Three boxes are labeled <b>Apples</b>, <b>Oranges</b>, and <b>Mixed</b> — but all three labels are wrong. You may pick one fruit from one box to look at. Which box should you pick from to correctly relabel all three?',
+      ['The box labeled Apples','The box labeled Oranges','The box labeled Mixed','It cannot be done'],'The box labeled Mixed',
+      'Since "Mixed" is mislabeled, it must actually be 100% apples or 100% oranges — a single fruit tells you which.'),
+    mc('Two Guards','One guard always lies, one always tells the truth — you don\'t know which is which. You may ask ONE question to ONE guard to find the safe door. What should you ask?',
+      ['"Are you the truth-teller?"','"What would the other guard say is the safe door?"','"Is this the safe door?"','"Which door do you prefer?"'],
+      '"What would the other guard say is the safe door?"',
+      'This question makes both guards point to the same wrong door — so you pick the other one.'),
+    mc('The Odd Coin','You have 9 coins, identical except one is slightly heavier. Using a balance scale, what is the minimum number of weighings needed to guarantee finding it?',
+      ['4','3','2','5'],'2','Split into groups of 3. First weighing narrows it to 3 coins; second weighing narrows it to 1.'),
+    ord('Race Positions','Five runners finish a race. Alex beats Ben. Casey beats Dana. Ben beats Evan. Dana beats Alex. Evan beats Casey. Order all five from 1st to 5th place by clicking them in order.',
+      ['Dana','Alex','Ben','Evan','Casey'],['Dana','Alex','Ben','Evan','Casey'],
+      'Chain the "beats" relations: Dana > Alex > Ben > Evan > Casey.'),
+    mc('Who Owns the Bird?','Three neighbors — Mia, Noah, Zoe — each own a different pet: Cat, Dog, Bird. Mia does not own the Dog. Noah owns the Cat. Who owns the Bird?',
+      ['Mia','Noah','Zoe','Cannot be determined'],'Mia','Noah has the Cat. Mia doesn\'t have the Dog, so Mia has the Bird.'),
+    tx('Age Puzzle','A father is 4 times as old as his son. In 20 years, he\'ll be twice as old as his son. How old is the son right now?',
+      ['10'],'Let son = x, father = 4x. Solve: 4x+20 = 2(x+20).'),
+    mc('The Rose Trap','All roses are flowers. Some flowers fade quickly. Can we conclude that some roses fade quickly?',
+      ['Yes, definitely','No — the logic doesn\'t guarantee it','Only on Tuesdays','Yes, because roses are flowers'],
+      'No — the logic doesn\'t guarantee it','The "flowers that fade quickly" might not include any roses at all — this is a classic invalid syllogism.'),
+    mc('The Sock Drawer','A drawer has 21 blue socks, 15 black socks, and 17 red socks, all identical within color, all mixed up in the dark. What is the minimum number of socks you must pull out to guarantee a matching pair?',
+      ['3','4','2','21'],'4','With 3 colors, pulling 4 socks guarantees at least two share a color (pigeonhole principle).'),
+    mc('What Day Is It?','If tomorrow\'s tomorrow is Monday, and today is not Monday, what day is today?',
+      ['Friday','Saturday','Sunday','Thursday'],'Saturday','"Tomorrow\'s tomorrow" is two days ahead. If that equals Monday, today is Saturday.'),
+    mc('The Youngest','A is older than B. B is older than C. Who is the youngest?',
+      ['A','B','C','Cannot be determined'],'C','Chain the comparisons: A > B > C, so C is youngest.'),
+    mc('Cats and Mice','5 cats catch 5 mice in 5 minutes. How many minutes would it take 100 cats to catch 100 mice?',
+      ['100','20','5','1'],'5','Each cat still only needs 5 minutes to catch its own mouse, regardless of how many cats there are.'),
+    mc('One Match','You enter a cold, dark room with one match, an oil lamp, a candle, and a pile of firewood. What should you light first?',
+      ['The oil lamp','The candle','The firewood','The match'],'The match','You can\'t light anything without first lighting the match itself.'),
+    mc('Three Switches','Three switches are outside a room; only one controls a bulb inside. You may enter the room only once. How do you determine which switch controls the bulb?',
+      ['Flip each switch quickly and listen for a click','Turn switch 1 on for several minutes, turn it off, turn switch 2 on, then enter and check both heat and light','Guess randomly','It is impossible with only one entry'],
+      'Turn switch 1 on for several minutes, turn it off, turn switch 2 on, then enter and check both heat and light',
+      'A bulb left on for a while stays warm after being switched off — heat plus light together identify all three states.'),
+    mc('Bridge Crossing','Four people must cross a bridge at night with one torch. Crossing times are 1, 2, 5, and 10 minutes; max 2 people cross at once, walking at the slower person\'s pace, and the torch must be carried back each time. What is the minimum total time to get everyone across?',
+      ['19 minutes','17 minutes','21 minutes','15 minutes'],'17 minutes',
+      'Send the two fastest (1,2) across first, return the fastest, send the two slowest (5,10) together, return the second-fastest, then send the two fastest again.'),
+    mc('Border Burial','A plane crashes exactly on the border between two countries. Where should you bury the survivors?',
+      ['On the home country\'s side','Split evenly between both countries','You don\'t bury survivors — they\'re alive','On neutral ground'],
+      'You don\'t bury survivors — they\'re alive','The riddle hinges on the word "survivors" — they don\'t need burying at all.'),
+    mc('Monty\'s Choice','In the classic three-door game, you pick a door, the host (who knows what\'s behind each) opens a different door revealing nothing, then offers you a switch. What should you do to maximize your odds?',
+      ['Stay with your original choice','Switch — it doubles your odds to 2/3','It makes no difference','Flip a coin to decide'],
+      'Switch — it doubles your odds to 2/3','Switching wins whenever your first guess was wrong, which happens 2 out of 3 times.'),
+    mc('The Bird Between Trains','Two trains are 300 miles apart, each heading toward the other at 60 mph. A bird flies back and forth between them at 90 mph until they meet. How far does the bird fly in total?',
+      ['225 miles','250 miles','200 miles','300 miles'],'225 miles',
+      'The trains close the gap at 120 mph combined, meeting in 2.5 hours. The bird flies 90 × 2.5 = 225 miles regardless of the back-and-forth.'),
+    mc('"I Always Lie"','A man says: "I always lie." Is this statement true or false?',
+      ['True','False','It\'s a paradox — it cannot be consistently true or false','Both true and false at once'],
+      'It\'s a paradox — it cannot be consistently true or false',
+      'If the statement is true, then he sometimes tells the truth — contradiction. If false, he doesn\'t always lie — also contradiction.'),
+    mc('Clock Hands','In a 12-hour period, how many times do the hour and minute hands of a clock overlap exactly?',
+      ['12','11','24','10'],'11','The hands overlap 11 times every 12 hours, not 12, because the hour hand also moves.'),
+    mc('The Farmer\'s Sheep','A farmer has 17 sheep, and all but 9 die. How many sheep are left?',
+      ['8','9','17','0'],'9','"All but 9" means 9 survive — the subtraction is a misdirection.'),
+  ];
+
+  const LATERAL = [
+    mc('The Silent Traveler','I speak without a mouth and hear without ears. I have no body, but I come alive with wind. What am I?',
+      ['An echo','A ghost','A shadow','A whisper'],'An echo','Think of something that repeats sound back to you in canyons or empty rooms.'),
+    mc('The Elevator Habit','A man lives on the 10th floor. Every morning he rides the elevator to the ground floor. Every evening he rides it back up, but only to the 7th floor, walking the rest — except on rainy days, when he rides all the way to the 10th. Why?',
+      ['He is too short to reach the 10th-floor button, but can reach it with an umbrella','He enjoys the exercise normally','The elevator breaks above floor 7','He visits a friend on floor 7 daily'],
+      'He is too short to reach the 10th-floor button, but can reach it with an umbrella',
+      'Think about what changes physically about him on rainy days — what is he carrying?'),
+    tx('Always Ahead','The more you take, the more you leave behind. What am I?',['footsteps','footprints','steps'],
+      'Think about walking — what do you create with each step while also moving forward?'),
+    mc('The Family Photo','A man looks at a photo and says: "Brothers and sisters I have none, but that man\'s father is my father\'s son." Who is in the photo?',
+      ['His son','Himself','His father','His nephew'],'His son','"My father\'s son" with no siblings can only refer to the speaker himself.'),
+    mc('Keys and Space','What has keys but no locks, space but no room, and you can enter but never go inside?',
+      ['A keyboard','A piano','A safe','A map'],'A keyboard','Think of the object you type on — it has its own kind of "keys" and "space."'),
+    mc('Wetter When Dry','What gets wetter the more it dries?',
+      ['A sponge','A towel','The ground','A cloud'],'A towel','It absorbs moisture from whatever it dries off.'),
+    mc('Head and Tail','What has a head and a tail but no body?',
+      ['A coin','A snake','A comet','A kite'],'A coin','Flip it — you\'ll know which side you got.'),
+    mc('The Growing Hole','The more you remove from it, the bigger it gets. What is it?',
+      ['A hole','A debt','A balloon','A crowd'],'A hole','Digging it out only makes the empty space larger.'),
+    mc('World Traveler','What can travel around the world while staying in one corner?',
+      ['A stamp','A satellite','A map','A compass'],'A stamp','It rides on letters that circle the globe, stuck in the corner of the envelope.'),
+    mc('Runs But Never Walks','What runs but never walks, has a bed but never sleeps, has a mouth but never eats?',
+      ['A river','A clock','The wind','A road'],'A river','Think of its "mouth" where it meets the sea, and its "bed" along the bottom.'),
+    mc('From the Mine','I am taken from a mine and shut up in a wooden case, from which I am never released, yet I am used by almost everyone. What am I?',
+      ['Pencil lead (graphite)','Coal','Gold','Diamond'],'Pencil lead (graphite)','Think of what\'s inside a wooden pencil.'),
+    mc('Many Teeth','What has many teeth but cannot bite?',
+      ['A comb','A saw','A zipper','A gear'],'A comb','You run it through your hair every morning.'),
+    mc('Catch But Not Throw','What can you catch but not throw?',
+      ['A cold','A ball','A fish','A train'],'A cold','Think of something contagious, not physical.'),
+    mc('Never Comes Down','What goes up but never comes down?',
+      ['Your age','A balloon','Smoke','A kite'],'Your age','It only increases, year after year, with no way to reverse it.'),
+    mc('One Eye, No Sight','What has one eye but cannot see?',
+      ['A needle','A storm','A potato','A camera'],'A needle','Thread passes through its single "eye."'),
+    mc('Heavy Forward','Forward I\'m heavy, backward I\'m not. What am I?',
+      ['TON','NET','TEN','TIN'],'TON','Spell it forward, then read it backward — "ton" becomes "not."'),
+    mc('Look Right Through','What invention lets you look right through a wall?',
+      ['A window','X-ray glasses','A telescope','A mirror'],'A window','It\'s a simple household feature, not a gadget.'),
+    mc('Great Woman','In English, the first two letters of this word signify a male, the first three signify a female, the first four signify a great person, and the whole word signifies a great woman. What is the word?',
+      ['HEROINE','MOTHER','LEGEND','QUEEN'],'HEROINE','HE (male) → HER (female) → HERO (great person) → HEROINE (great woman).'),
+    mc('Color of the Bear','A man builds a house with all four walls facing south. A bear walks by. What color is the bear?',
+      ['Brown','Black','White','Grey'],'White','A house with all walls facing south can only exist at the North Pole, home of polar bears.'),
+    mc('Fills a Room','What can fill a room but takes up no physical space?',
+      ['Light','Sound','Air','Smoke'],'Light','It floods every corner instantly but has no mass or volume of its own.'),
+  ];
+
+  const LANGUAGE = [
+    tx('Scrambled Thinker','Unscramble these letters to form a word meaning "a puzzle or riddle":',['enigma'],
+      'It starts with the same letter as "Egypt" and ends like "drama."','G N I M A E'),
+    tx('Shift Cipher','Each letter has been shifted forward by 3 (A→D, B→E...). Decode the word:',['mind'],
+      'Shift each letter BACKWARD by 3: P→M, L→I, Q→N, G→D.','P L Q G'),
+    mc('Sounds Like','I sound like a number, but I mean "to send through the air" or "a fragrance." What word group am I?',
+      ['Scent / Sent / Cent','Won / One','Hour / Our','Sea / See'],'Scent / Sent / Cent',
+      '"Cent" sounds like the number one, "sent" means transmitted, "scent" means fragrance.'),
+    mc('The Odd One','Which word does not belong with the others?',
+      ['DRAWER — doesn\'t reverse into a real common word','REWARD — the only one without doubled letters','DESSERTS — the only food-related word','STRESSED — the only one with two syllables'],
+      'REWARD — the only one without doubled letters',
+      'Try reading each word backward: DESSERTS↔STRESSED, DRAWER↔REWARD — now compare letter patterns rather than meaning.',
+      'DESSERTS · STRESSED · DRAWER · REWARD'),
+    mc('Word Ladder','Which word correctly changes just ONE letter from COLD, keeping it a real word?',
+      ['COLT','BOLD','COIN','CARD'],'COLT','Change only the third letter of COLD (L) and keep it a real word: C-O-_-D.'),
+    tx('Anagram: LISTEN','Unscramble these letters to form a common word:',['silent'],
+      'It describes the opposite of noisy.','L I S T E N'),
+    tx('Anagram: ASTRONOMER','Unscramble these letters to form a two-word phrase describing someone who watches the night sky:',
+      ['moonstarer','moon starer'],'It\'s literally what an astronomer does, spelled differently.','A S T R O N O M E R'),
+    mc('Hidden Country','A country name is hidden inside this sentence. Which one is it?',
+      ['IRAN','CHAD','CHINA','MALI'],'IRAN','Look inside the phrase "I RAN INTO THE WALL" — the hidden word spans two words.','"I RAN INTO THE WALL"'),
+    tx('Reverse Cipher','Each letter has been shifted forward by 1 (A→B, B→C...). Decode the word:',['puzzle'],
+      'Shift each letter BACKWARD by 1: Q→P, V→U, A→Z, A→Z, M→L, F→E.','Q V A A M F'),
+    tx('Anagram: DORMITORY','Unscramble these letters to form a two-word phrase meaning "an untidy bedroom":',
+      ['dirty room'],'Think of what a messy bedroom might be called, in two words.','D O R M I T O R Y'),
+    mc('Shorter Word','What 5-letter word becomes a *longer* word when you add two letters to its end, even though the new word describes the original as "more brief"?',
+      ['SHORT','QUICK','TINY','SMALL'],'SHORT','Add "ER" to SHORT and you get SHORTER — a longer word that paradoxically means "more brief."'),
+    tx('Anagram: THE EYES','Unscramble this exact phrase\'s letters to form another 2-word phrase about perception:',
+      ['they see'],'It\'s a classic self-referential anagram pair.','T H E E Y E S'),
+    mc('Hidden Number','A number word is hidden inside this phrase. Which one is it?',
+      ['ONE','TEN','SIX','TWO'],'ONE','Look inside "THE LONE RANGER" — the hidden number spans across the middle of a word.','"THE LONE RANGER"'),
+    mc('Palindrome Spotter','Which of these words reads the same forwards and backwards?',
+      ['LEVEL','HOUSE','WATER','MONEY'],'LEVEL','Spell it out both directions — L-E-V-E-L is identical either way.'),
+    tx('Anagram: BELOW','Unscramble these letters to form another common word:',['elbow'],
+      'It\'s the joint in your arm.','B E L O W'),
+    tx('Missing Vowels','Insert the missing vowels to reveal a common word: P_ZZL_',['puzzle'],
+      'There are two missing vowels — one near the start, one near the end.','P _ Z Z L _'),
+    tx('Anagram: CONVERSATION','Unscramble these letters to form a three-word phrase about speaking passionately:',
+      ['voices rant on'],'Break it into three words describing loud, ongoing talk.','C O N V E R S A T I O N'),
+    mc('Word Inside a Word','Which short word is hidden at the start of CARPET?',
+      ['CAR','ART','PET','CAP'],'CAR','Look at the first three letters of CARPET.'),
+    mc('Compound Logic','Which pair of words, when joined, forms a single common compound word meaning a flying insect that glows at night?',
+      ['FIRE + FLY','LIGHT + BUG','GLOW + WORM','SPARK + MOTH'],'FIRE + FLY','Combine the two words directly: FIREFLY.'),
+    tx('Final Cipher','Each letter has been shifted forward by 2 (A→C, B→D...). Decode the word:',['brain'],
+      'Shift each letter BACKWARD by 2: D→B, T→R, C→A, K→I, P→N.','D T C K P'),
+  ];
+
+  const TIERS = [
+    { key:'Pattern', icon:'◆', puzzles: PATTERN },
+    { key:'Logic',   icon:'◈', puzzles: LOGIC },
+    { key:'Lateral', icon:'✦', puzzles: LATERAL },
+    { key:'Language',icon:'✎', puzzles: LANGUAGE },
+  ];
+  const TIME_PER_PUZZLE = 60;
+  const TOTAL_LEVELS = TIERS.reduce((s,t)=>s+t.puzzles.length,0);
+
+  let state = {
+    score: 0, streak: 0, bestStreak: 0,
+    solved: {},
+    activeTier: 'Pattern',
+    currentTierKey: null, currentLevelIdx: null,
+    timerInterval: null, timeLeft: 60, hintUsed: false, answered: false, orderPlaced: []
+  };
+
+  const RING_CIRC = 2 * Math.PI * 24;
+
+  function key(tierKey, idx){ return tierKey + '-' + idx; }
+
+  const screens = {
+    home: document.getElementById('screen-home'),
+    puzzle: document.getElementById('screen-puzzle'),
+    result: document.getElementById('screen-result'),
+  };
+  const tierTabsEl = document.getElementById('tierTabs');
+  const pathWrap = document.getElementById('pathWrap');
+  const progFill = document.getElementById('progFill');
+  const statScore = document.getElementById('statScore');
+  const statStreak = document.getElementById('statStreak');
+  const statSolved = document.getElementById('statSolved');
+
+  function showScreen(name){
+    Object.values(screens).forEach(s=>s.classList.remove('active'));
+    screens[name].classList.add('active');
+  }
+
+  function totalSolvedCount(){ return Object.keys(state.solved).length; }
+
+  function updateStats(){
+    statScore.textContent = state.score;
+    statStreak.textContent = state.streak;
+    statSolved.textContent = totalSolvedCount() + '/' + TOTAL_LEVELS;
+    progFill.style.width = Math.round(100*totalSolvedCount()/TOTAL_LEVELS) + '%';
+  }
+
+  function tierUnlocked(tierKey){
+    const idx = TIERS.findIndex(t=>t.key===tierKey);
+    if(idx === 0) return true;
+    const prev = TIERS[idx-1];
+    return prev.puzzles.every((_,i)=> state.solved[key(prev.key,i)] !== undefined );
+  }
+
+  function levelUnlocked(tierKey, idx){
+    if(!tierUnlocked(tierKey)) return false;
+    if(idx === 0) return true;
+    return state.solved[key(tierKey, idx-1)] !== undefined;
+  }
+
+  function renderTabs(){
+    tierTabsEl.innerHTML = '';
+    TIERS.forEach(t=>{
+      const unlocked = tierUnlocked(t.key);
+      const solvedN = t.puzzles.filter((_,i)=> state.solved[key(t.key,i)]!==undefined).length;
+      const tab = document.createElement('div');
+      tab.className = 'tier-tab' + (t.key===state.activeTier?' active':'') + (!unlocked?' locked':'');
+      tab.innerHTML = `<span class="t-icon">${t.icon}</span><div class="t-name">${t.key}</div><div class="t-prog">${solvedN}/${t.puzzles.length}</div>`;
+      if(unlocked) tab.addEventListener('click', ()=>{ state.activeTier = t.key; renderHome(); });
+      tierTabsEl.appendChild(tab);
+    });
+  }
+
+  function renderPath(){
+    pathWrap.innerHTML = '';
+    const tier = TIERS.find(t=>t.key===state.activeTier);
+    const positions = ['left','center','right','center'];
+
+    tier.puzzles.forEach((p, i)=>{
+      const row = document.createElement('div');
+      const posClass = positions[i % positions.length];
+      row.className = 'path-row ' + posClass;
+
+      const unlocked = levelUnlocked(tier.key, i);
+      const solvedKey = key(tier.key, i);
+      const isSolved = state.solved[solvedKey] !== undefined;
+      const isCurrent = unlocked && !isSolved;
+      const stars = isSolved ? state.solved[solvedKey] : 0;
+
+      const node = document.createElement('div');
+      node.className = 'level-node' + (isSolved?' done':'') + (isCurrent?' current':'') + (!unlocked?' locked':'');
+
+      const numLbl = document.createElement('div');
+      numLbl.className = 'lv-num';
+      numLbl.textContent = 'LV ' + (i+1);
+      node.appendChild(numLbl);
+
+      if(!unlocked){
+        node.innerHTML += `<span class="lock-ic">🔒</span>`;
+      } else {
+        node.innerHTML += `<span>${i+1}</span>`;
+      }
+      if((i+1) % 10 === 0){
+        const boss = document.createElement('div');
+        boss.className = 'badge-boss';
+        boss.textContent = '👑';
+        node.appendChild(boss);
+      }
+
+      const starsEl = document.createElement('div');
+      starsEl.className = 'stars';
+      for(let s=0; s<3; s++){
+        const sp = document.createElement('span');
+        sp.textContent = '★';
+        if(s < stars) sp.classList.add('lit');
+        starsEl.appendChild(sp);
+      }
+      if(isSolved) node.appendChild(starsEl);
+
+      if(unlocked){
+        node.addEventListener('click', ()=> openPuzzle(tier.key, i));
+      }
+      row.appendChild(node);
+      pathWrap.appendChild(row);
+    });
+  }
+
+  function renderHome(){
+    renderTabs();
+    renderPath();
+    updateStats();
+  }
+
+  const pzTag = document.getElementById('pzTag');
+  const pzTitle = document.getElementById('pzTitle');
+  const pzPrompt = document.getElementById('pzPrompt');
+  const pzVisualSlot = document.getElementById('pzVisualSlot');
+  const pzInteractionSlot = document.getElementById('pzInteractionSlot');
+  const pzHint = document.getElementById('pzHint');
+  const pzFeedback = document.getElementById('pzFeedback');
+  const pzFeedbackText = document.getElementById('pzFeedbackText');
+  const starEarn = document.getElementById('starEarn');
+  const pzClock = document.getElementById('pzClock');
+  const timerFg = document.getElementById('timerFg');
+  const btnHint = document.getElementById('btnHint');
+  const btnNext = document.getElementById('btnNext');
+  const btnBack = document.getElementById('btnBack');
+
+  timerFg.style.strokeDasharray = RING_CIRC;
+
+  function openPuzzle(tierKey, idx){
+    state.currentTierKey = tierKey;
+    state.currentLevelIdx = idx;
+    state.timeLeft = TIME_PER_PUZZLE;
+    state.hintUsed = false;
+    state.answered = false;
+    state.orderPlaced = [];
+
+    const tier = TIERS.find(t=>t.key===tierKey);
+    const p = tier.puzzles[idx];
+
+    pzTag.textContent = (tierKey + ' · LEVEL ' + (idx+1)).toUpperCase();
+    pzTitle.textContent = p.title;
+    pzPrompt.innerHTML = p.prompt;
+    pzHint.classList.remove('show');
+    pzHint.textContent = p.hint;
+    pzFeedback.classList.remove('show','win','lose');
+    pzFeedbackText.textContent = '';
+    starEarn.innerHTML = '';
+    btnHint.disabled = false;
+    btnHint.textContent = 'Show hint (−15 pts)';
+    btnNext.style.display = 'none';
+
+    pzVisualSlot.innerHTML = '';
+    if(p.visual){
+      const v = document.createElement('div');
+      v.className = 'visual-block';
+      v.textContent = p.visual;
+      pzVisualSlot.appendChild(v);
+    }
+    if(p.gridDemo){
+      const g = document.createElement('div');
+      g.className = 'grid-block';
+      g.style.gridTemplateColumns = `repeat(${p.gridDemo[0].length}, 52px)`;
+      p.gridDemo.forEach(row=> row.forEach(cell=>{
+        const c = document.createElement('div');
+        c.className = 'grid-cell';
+        c.textContent = cell;
+        if(cell === '?') c.style.color = 'var(--signal)';
+        g.appendChild(c);
+      }));
+      pzVisualSlot.appendChild(g);
+    }
+
+    renderInteraction(p);
+    startTimer();
+    showScreen('puzzle');
+  }
+
+  function renderInteraction(p){
+    pzInteractionSlot.innerHTML = '';
+    const letters = ['A','B','C','D'];
+    if(p.type === 'choice'){
+      const wrap = document.createElement('div');
+      wrap.className = 'choice-grid';
+      p.options.forEach((opt, i)=>{
+        const btn = document.createElement('button');
+        btn.className = 'choice-btn';
+        btn.dataset.opt = opt;
+        btn.innerHTML = `<span class="opt-letter">${letters[i]}</span><span>${opt}</span>`;
+        btn.addEventListener('click', ()=> handleChoiceAnswer(opt, btn));
+        wrap.appendChild(btn);
+      });
+      pzInteractionSlot.appendChild(wrap);
+    } else if(p.type === 'text'){
+      const row = document.createElement('div');
+      row.className = 'text-input-row';
+      row.innerHTML = `<input type="text" id="textAns" placeholder="Type your answer..." autocomplete="off">
+                        <button class="btn primary" id="submitText">Submit</button>`;
+      pzInteractionSlot.appendChild(row);
+      const input = row.querySelector('#textAns');
+      const submitBtn = row.querySelector('#submitText');
+      const submit = ()=> handleTextAnswer(input.value);
+      submitBtn.addEventListener('click', submit);
+      input.addEventListener('keydown', e=>{ if(e.key==='Enter') submit(); });
+    } else if(p.type === 'order'){
+      const wrap = document.createElement('div');
+      const slotsRow = document.createElement('div');
+      slotsRow.className = 'order-row';
+      slotsRow.id = 'orderSlots';
+      const pool = document.createElement('div');
+      pool.className = 'order-pool';
+      pool.id = 'orderPool';
+      const items = p.items.slice().sort(()=>Math.random()-0.5);
+      items.forEach(item=>{
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.textContent = item;
+        chip.addEventListener('click', ()=>{
+          if(state.answered) return;
+          state.orderPlaced.push(item);
+          chip.remove();
+          renderOrderSlots(p);
+          if(state.orderPlaced.length === p.items.length) handleOrderAnswer(p);
+        });
+        pool.appendChild(chip);
+      });
+      wrap.appendChild(slotsRow);
+      wrap.appendChild(pool);
+      pzInteractionSlot.appendChild(wrap);
+      renderOrderSlots(p);
+    }
+  }
+
+  function renderOrderSlots(p){
+    const slotsRow = document.getElementById('orderSlots');
+    slotsRow.innerHTML = state.orderPlaced.map((item,i)=> `<div class="chip placed">${i+1}. ${item}</div>`).join('')
+      || '<span style="color:var(--ink-dim); font-size:12px;">Click items below in order, 1st place first →</span>';
+  }
+
+  function startTimer(){
+    clearInterval(state.timerInterval);
+    updateClock();
+    state.timerInterval = setInterval(()=>{
+      state.timeLeft--;
+      updateClock();
+      if(state.timeLeft <= 0){
+        clearInterval(state.timerInterval);
+        if(!state.answered) timeUp();
+      }
+    }, 1000);
+  }
+  function updateClock(){
+    pzClock.textContent = state.timeLeft;
+    const frac = state.timeLeft / TIME_PER_PUZZLE;
+    timerFg.style.strokeDashoffset = RING_CIRC * (1 - frac);
+    timerFg.classList.toggle('low', state.timeLeft <= 10);
+  }
+  function timeUp(){
+    state.answered = true;
+    lockInteraction();
+    showFeedback(false, "Time's up. The answer was: " + getAnswerDisplay(), 0);
+    state.streak = 0;
+    updateStats();
+    btnNext.style.display = 'inline-block';
+  }
+
+  function currentPuzzle(){
+    return TIERS.find(t=>t.key===state.currentTierKey).puzzles[state.currentLevelIdx];
+  }
+  function getAnswerDisplay(){
+    const p = currentPuzzle();
+    if(p.type === 'choice') return p.answer;
+    if(p.type === 'text') return p.answer[0];
+    if(p.type === 'order') return p.correctOrder.join(' → ');
+  }
+  function lockInteraction(){
+    pzInteractionSlot.querySelectorAll('button, input, .chip').forEach(el=>{
+      el.style.pointerEvents = 'none';
+      if(el.disabled !== undefined) el.disabled = true;
+    });
+  }
+
+  function handleChoiceAnswer(opt, btnEl){
+    if(state.answered) return;
+    state.answered = true;
+    clearInterval(state.timerInterval);
+    const p = currentPuzzle();
+    const correct = opt === p.answer;
+    pzInteractionSlot.querySelectorAll('.choice-btn').forEach(b=>{
+      b.disabled = true;
+      if(b.dataset.opt === p.answer) b.classList.add('correct');
+    });
+    if(!correct) btnEl.classList.add('wrong');
+    finalizeAnswer(correct);
+  }
+  function handleTextAnswer(val){
+    if(state.answered) return;
+    const p = currentPuzzle();
+    const norm = val.trim().toLowerCase();
+    const correct = p.answer.some(a=>a.toLowerCase() === norm);
+    state.answered = true;
+    clearInterval(state.timerInterval);
+    lockInteraction();
+    finalizeAnswer(correct);
+  }
+  function handleOrderAnswer(p){
+    state.answered = true;
+    clearInterval(state.timerInterval);
+    lockInteraction();
+    const correct = JSON.stringify(state.orderPlaced) === JSON.stringify(p.correctOrder);
+    finalizeAnswer(correct);
+  }
+
+  function finalizeAnswer(correct){
+    const solvedKey = key(state.currentTierKey, state.currentLevelIdx);
+    if(correct){
+      let pts = 100;
+      pts -= Math.floor((TIME_PER_PUZZLE - state.timeLeft) * 0.5);
+      if(state.hintUsed) pts -= 15;
+      pts = Math.max(pts, 20);
+      state.score += pts;
+      state.streak += 1;
+      state.bestStreak = Math.max(state.bestStreak, state.streak);
+
+      let stars = 1;
+      if(state.timeLeft > 40 && !state.hintUsed) stars = 3;
+      else if(state.timeLeft > 20 || !state.hintUsed) stars = 2;
+      state.solved[solvedKey] = stars;
+
+      showFeedback(true, `Correct! +${pts} points. Streak: ${state.streak}.`, stars);
+    } else {
+      state.streak = 0;
+      showFeedback(false, 'Not quite. The correct answer was: ' + getAnswerDisplay(), 0);
+    }
+    updateStats();
+    btnNext.style.display = 'inline-block';
+  }
+
+  function showFeedback(win, msg, stars){
+    pzFeedbackText.textContent = msg;
+    pzFeedback.classList.add('show');
+    pzFeedback.classList.toggle('win', win);
+    pzFeedback.classList.toggle('lose', !win);
+    starEarn.innerHTML = '';
+    if(win){
+      for(let s=0;s<3;s++){
+        const sp = document.createElement('span');
+        sp.textContent = '★';
+        if(s<stars) sp.classList.add('lit');
+        starEarn.appendChild(sp);
+      }
+    }
+  }
+
+  btnHint.addEventListener('click', ()=>{
+    if(state.answered) return;
+    state.hintUsed = true;
+    pzHint.classList.add('show');
+    btnHint.disabled = true;
+    btnHint.textContent = 'Hint used';
+  });
+
+  btnBack.addEventListener('click', ()=>{
+    clearInterval(state.timerInterval);
+    renderHome();
+    showScreen('home');
+  });
+
+  btnNext.addEventListener('click', ()=>{
+    clearInterval(state.timerInterval);
+    if(totalSolvedCount() === TOTAL_LEVELS){
+      showResults();
+    } else {
+      const tier = TIERS.find(t=>t.key===state.currentTierKey);
+      const nextIdx = state.currentLevelIdx + 1;
+      if(nextIdx < tier.puzzles.length && levelUnlocked(tier.key, nextIdx)){
+        openPuzzle(tier.key, nextIdx);
+      } else {
+        renderHome();
+        showScreen('home');
+      }
+    }
+  });
+
+  function showResults(){
+    document.getElementById('resScore').textContent = state.score;
+    document.getElementById('resBestStreak').textContent = state.bestStreak;
+    showScreen('result');
+  }
+
+  document.getElementById('btnRestart').addEventListener('click', ()=>{
+    state = { score:0, streak:0, bestStreak:0, solved:{}, activeTier:'Pattern',
+      currentTierKey:null, currentLevelIdx:null, timerInterval:null, timeLeft:60,
+      hintUsed:false, answered:false, orderPlaced:[] };
+    renderHome();
+    showScreen('home');
+  });
+
+  document.getElementById('statSolved').textContent = '0/' + TOTAL_LEVELS;
+  renderHome();
+})();
+</script>
+</body>
+</html>

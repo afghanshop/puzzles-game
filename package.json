@@ -1,0 +1,11 @@
+{
+  "name": "mindforge-puzzle-game",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MINDFORGE — an 80-level puzzle game across Pattern, Logic, Lateral, and Language tiers.",
+  "scripts": {
+    "dev": "npx serve .",
+    "build": "echo 'Static site — nothing to build'",
+    "start": "npx serve ."
+  }
+}
