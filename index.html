@@ -56,6 +56,25 @@
   .screen.active{ display:block; animation: rise .3s ease; }
   @keyframes rise{ from{ opacity:0; transform: translateY(8px);} to{opacity:1; transform:translateY(0);} }
 
+  /* ---------- NAME GATE ---------- */
+  .name-gate{
+    min-height: 70vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; gap: 6px; padding: 20px;
+  }
+  .gate-mark{ font-family:'Fraunces', serif; font-weight:900; font-size: 44px; letter-spacing:-0.02em; }
+  .gate-mark span{ color: var(--signal); }
+  .gate-sub{ color: var(--ink-dim); font-size: 11px; letter-spacing: 0.16em; text-transform:uppercase; margin-bottom: 22px; }
+  .gate-line{ color: var(--ink-dim); font-size: 14px; line-height: 1.7; max-width: 42ch; margin-bottom: 30px; }
+  .gate-form{ display:flex; gap: 10px; flex-wrap:wrap; justify-content:center; width: 100%; max-width: 440px; }
+  .gate-form input{
+    flex:1; min-width: 220px; background: var(--panel-raised); border:1px solid var(--line); color: var(--ink);
+    padding: 15px 16px; font-family:'Fraunces', serif; font-size: 16px; text-align:center;
+  }
+  .gate-form input:focus{ outline:none; border-color: var(--signal); }
+  .gate-form .btn{ padding: 15px 22px; }
+  .gate-error{ color: var(--warn); font-size: 12px; margin-top: 12px; opacity:0; transition: opacity .2s ease; }
+  .gate-error.show{ opacity: 1; }
+
   /* ---------- TIER TABS ---------- */
   .tier-tabs{ display:flex; gap:6px; margin-bottom: 22px; overflow-x:auto; padding-bottom:4px; }
   .tier-tab{
@@ -187,10 +206,10 @@
 <body>
 <div id="app">
 
-  <header class="top">
+  <header class="top" id="topHeader" style="display:none;">
     <div class="brand">
       <div class="mark">MIND<span>FORGE</span></div>
-      <div class="sub">a puzzle laboratory</div>
+      <div class="sub" id="greetSub">a puzzle laboratory</div>
     </div>
     <div class="stat-row">
       <div class="stat score"><div class="num" id="statScore">0</div><div class="lbl">Score</div></div>
@@ -199,8 +218,22 @@
     </div>
   </header>
 
+  <!-- NAME ENTRY SCREEN -->
+  <div class="screen active" id="screen-name">
+    <div class="name-gate">
+      <div class="mark gate-mark">MIND<span>FORGE</span></div>
+      <div class="gate-sub">a puzzle laboratory</div>
+      <p class="gate-line">80 levels. Four disciplines of thought. Before you enter the lab, tell us what to call you.</p>
+      <div class="gate-form">
+        <input type="text" id="nameInput" placeholder="Enter your name..." autocomplete="off" maxlength="24">
+        <button class="btn primary" id="btnStart">Enter the lab →</button>
+      </div>
+      <div class="gate-error" id="nameError">Type a name to continue.</div>
+    </div>
+  </div>
+
   <!-- HOME SCREEN -->
-  <div class="screen active" id="screen-home">
+  <div class="screen" id="screen-home">
     <div class="tier-tabs" id="tierTabs"></div>
     <div class="progress-strip"><div class="fill" id="progFill" style="width:0%"></div></div>
     <div class="path-wrap" id="pathWrap"></div>
@@ -454,6 +487,7 @@
   const TOTAL_LEVELS = TIERS.reduce((s,t)=>s+t.puzzles.length,0);
 
   let state = {
+    playerName: '',
     score: 0, streak: 0, bestStreak: 0,
     solved: {},
     activeTier: 'Pattern',
@@ -466,6 +500,7 @@
   function key(tierKey, idx){ return tierKey + '-' + idx; }
 
   const screens = {
+    name: document.getElementById('screen-name'),
     home: document.getElementById('screen-home'),
     puzzle: document.getElementById('screen-puzzle'),
     result: document.getElementById('screen-result'),
@@ -852,19 +887,47 @@
   function showResults(){
     document.getElementById('resScore').textContent = state.score;
     document.getElementById('resBestStreak').textContent = state.bestStreak;
+    const big = document.querySelector('#screen-result .big');
+    if(big) big.textContent = (state.playerName ? state.playerName + ', y' : 'Y') + 'ou cleared the lab';
     showScreen('result');
   }
 
   document.getElementById('btnRestart').addEventListener('click', ()=>{
-    state = { score:0, streak:0, bestStreak:0, solved:{}, activeTier:'Pattern',
+    const keepName = state.playerName;
+    state = { playerName: keepName, score:0, streak:0, bestStreak:0, solved:{}, activeTier:'Pattern',
       currentTierKey:null, currentLevelIdx:null, timerInterval:null, timeLeft:60,
       hintUsed:false, answered:false, orderPlaced:[] };
     renderHome();
     showScreen('home');
   });
 
+  /* ---------- NAME GATE ---------- */
+  const nameInput = document.getElementById('nameInput');
+  const btnStartGate = document.getElementById('btnStart');
+  const nameError = document.getElementById('nameError');
+  const topHeader = document.getElementById('topHeader');
+  const greetSub = document.getElementById('greetSub');
+
+  function submitName(){
+    const val = nameInput.value.trim();
+    if(!val){
+      nameError.classList.add('show');
+      nameInput.focus();
+      return;
+    }
+    state.playerName = val.slice(0, 24);
+    greetSub.textContent = 'welcome back, ' + state.playerName;
+    topHeader.style.display = 'flex';
+    renderHome();
+    showScreen('home');
+  }
+  btnStartGate.addEventListener('click', submitName);
+  nameInput.addEventListener('keydown', e=>{ if(e.key === 'Enter') submitName(); });
+  nameInput.addEventListener('input', ()=> nameError.classList.remove('show'));
+
   document.getElementById('statSolved').textContent = '0/' + TOTAL_LEVELS;
-  renderHome();
+  showScreen('name');
+  nameInput.focus();
 })();
 </script>
 </body>
